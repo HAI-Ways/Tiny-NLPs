@@ -1,0 +1,87 @@
+from __future__ import print_function, division
+import re
+import os
+import sys
+import string
+import numpy as np
+import pandas as pd
+from nltk.corpus import stopwords
+
+# Selected Amazon product review file is created using 'amazon product review json file loading.py'
+filePath='C:/your folder/Product Review/'
+fl=filePath+'selected_review.csv'
+colNm=['asin','helpful','overall','reviewText','reviewTime','reviewerID','reviewerName','summary','unixReviewTime']
+selCol=['overall','reviewText','unixReviewTime']
+highFreqWords = stopwords.words('english')
+
+def remove_punctuation_2(s):
+    return s.translate(None, string.punctuation)
+
+def remove_punctuation_3(s):
+    return s.translate(str.maketrans('','',string.punctuation))
+
+if sys.version.startswith('2'):
+    remove_punctuation = remove_punctuation_2
+else:
+    remove_punctuation = remove_punctuation_3
+    
+# load csv file
+reviews=pd.read_csv(fl,names=colNm,usecols=selCol)
+rvw_txt=reviews.loc[:]['reviewText'][1:]
+
+# clean text
+def clean_paragraph(my_string):
+    my_string.replace('\n', ',').replace('\r', ',')
+    my_string.replace(',,', ',')
+    my_string.replace('  ', ' ')
+    keep_list = re.compile(r'[^a-zA-Z-_,.?!:;]')
+    my_string =keep_list.sub(' ',my_string)
+    #my_string = re.sub('  ', ' ', my_string)
+    my_string=my_string.strip()
+    return my_string
+    
+# convert word into numbers
+def index_word():
+    wordCounts={}
+    ixed_sentences = []
+    for each_rvw in rvw_txt:
+        cleaned_rw=clean_paragraph(each_rvw)
+        if cleaned_rw=='':
+            continue
+
+        cleaned_rw=re.split(r'[,.?!:;]',cleaned_rw)
+        for line in cleaned_rw:
+            if line and line[0] not in '[*-|=\{\}':
+                sentence = remove_punctuation(line).lower().split()
+                if len(sentence) > 1:
+                    for word in sentence:
+                        if word not in highFreqWords:
+                            if word not in wordCounts:
+                                wordCounts[word] = 0
+                            wordCounts[word] += 1
+                        
+    dict_size=len(wordCounts)
+    wordCounts = sorted(wordCounts.items(), key=lambda x: x[1], reverse=True)
+    
+    #words are sorted. so it's easy to track the word
+    sorted_words = [w for w, count in wordCounts[:dict_size-1]] + ['<UNK>']
+    wordIdx = {w:i for i, w in enumerate(sorted_words)}
+    unk = wordIdx['<UNK>']
+    
+    for each_rvw in rvw_txt:
+        cleaned_rw=clean_paragraph(each_rvw)
+        if cleaned_rw=='':
+            continue
+
+        cleaned_rw=re.split(r'[,.?!:;]',cleaned_rw)
+        for line in cleaned_rw:
+            if line and line[0] not in '[*-|=\{\}':
+            
+                sentence = remove_punctuation(line).lower().split()
+                if len(sentence) > 1:
+                    sent = [wordIdx[word] if word not in highFreqWords and word in wordIdx else unk for word in sentence]
+                    ixed_sentences.append(sent)
+
+    return ixed_sentences, wordIdx,wordCounts
+    
+#ixed_sentences, wordIdx,wordCounts=index_word()    
