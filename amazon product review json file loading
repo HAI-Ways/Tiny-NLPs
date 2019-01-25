@@ -1,0 +1,81 @@
+from __future__ import print_function, division
+import os
+import sys
+import json
+import string
+import numpy as np
+import pandas as pd
+from datetime import datetime
+
+# Amazon Health and Personal Care review data can be downloaded from
+# http://jmcauley.ucsd.edu/data/amazon/
+filePath='C:/your folder/Product Review/'
+fl=filePath+'Health_and_Personal_Care_5.json'
+
+# load json file into a list
+data = []
+for line in open(fl, 'r'):
+    data.append(json.loads(line))
+    
+# load each review into padas DataFrame for easy grouping
+colNm=['asin','helpful','overall','reviewText','reviewTime','reviewerID','reviewerName','summary','unixReviewTime']
+productRv=pd.DataFrame([])
+productRv= pd.DataFrame(columns=colNm)
+
+t0=datetime.now()
+
+for i in range(len(data)):
+    rv=data[i]
+    rvlist=[]
+    asin=''        
+    helpful=''
+    overall=''
+    reviewText=''
+    reviewTime=''
+    reviewerID=''
+    reviewerName=''
+    summary=''
+    unixReviewTime=''    
+        
+    for x in rv:       
+        if x=='asin':
+            asin=rv[x]
+        elif x=='helpful':
+            helpful=rv[x]
+        elif x=='overall':
+            overall=rv[x]
+        elif x=='reviewText':
+            reviewText=rv[x]
+        elif x=='reviewTime':
+            reviewTime=rv[x]   
+        elif x=='reviewerID':
+            reviewerID=rv[x]
+        elif x=='reviewerName':
+            reviewerName=rv[x]
+        elif x=='summary':
+            summary=rv[x]
+        elif x=='unixReviewTime':
+            unixReviewTime=rv[x]           
+            
+    rvlist=[asin,helpful,overall,reviewText,reviewTime,reviewerID,reviewerName,summary,unixReviewTime]        
+    productRv.loc[productRv.shape[0]]=rvlist
+    
+    if (i+1) % 100 ==0:
+        print ('the '+str(i)+' th review is loaded.')
+        print('time taken:',(datetime.now() - t0))
+    
+'''
+    # for debugging          
+    if i>2:
+        break
+
+productRv.head() 
+'''
+
+# count reviews groupby asin
+rvwCounts=productRv.groupby('asin').count()
+rvwCounts.sort_values(by=['reviewText'],ascending=False,inplace=True)
+
+# select reviews of one specific product for detail analysis
+selectedProdRv=productRv.loc[productRv['asin']=='B0010JLMO8']
+selectedProdRv.to_csv(filePath+'selected_review.csv', index=False)
