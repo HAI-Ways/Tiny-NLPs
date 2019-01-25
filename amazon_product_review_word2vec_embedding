@@ -1,0 +1,146 @@
+from __future__ import print_function, division
+import re
+import os
+import sys
+import json
+import string
+import numpy as np
+import pandas as pd
+from glob import glob
+from builtins import range
+from datetime import datetime
+import matplotlib.pyplot as plt
+from sklearn.utils import shuffle
+from scipy.special import expit as sigmoid
+from scipy.spatial.distance import cosine as cos_dist
+from sklearn.metrics.pairwise import pairwise_distances
+from sklearn.manifold import TSNE
+from gensim.models import Word2Vec
+from nltk.corpus import stopwords
+
+sys.path.append(os.path.abspath('..'))
+from Tiny_NLPs.amazon_product_review_indexing import index_word
+
+# skip-gram and negative sampling are used for creating this word2vec model
+
+filePath='C:/your folder/'
+modelPath=filePath+'amz_word2vec/'
+
+i=0
+epochs = 10
+embed_size = 50     # set the number of hidden neurons/vector dimensions
+context_size = 5    # set the maxium number of context words
+learn_rate = 0.02   # set the start learning rate
+end_lrate = 0.0001  # set the final learning rate
+lrate_decay = (learn_rate-end_lrate)/epochs
+neg_sampl_size = 5  # set the numbers of negative words
+costs = []          
+
+# calculate word frequence. use this to lower high frequencing words during negative sampling
+def smoothed_word_freq(ixed_sentences, dict_size):
+    word_freq = np.zeros(dict_size)
+    total_word = sum(len(sentence) for sentence in ixed_sentences)
+    for sentence in ixed_sentences:
+        for word in sentence:
+            word_freq[word] += 1
+
+    swFreq = word_freq**0.75
+    swFreq = swFreq/swFreq.sum()
+
+    return swFreq
+    
+# get context words as target
+def get_context(pos, sentence, context_size):
+    start_pos = max(0, pos-context_size)
+    end_pos  = min(len(sentence),pos + context_size)
+
+    context = []
+    for ctx_pos, picked_word in enumerate(sentence[start_pos:end_pos],start=start_pos):
+        if ctx_pos != pos:   # exclude the input word itself      
+            context.append(picked_word)
+    return context
+    
+# sigmoid # y(1 for postive,0 for negative word)
+def optimizer(x, targets, y, learning_rate, wt1, wt2):
+    # activation: #z=wx+b a=sgz(z)
+
+    activation = wt1[x].dot(wt2[:,targets])   
+    prob = sigmoid(activation) # prediction for output (contextword)
+
+    #calculate weight based on input, difference between y and prediction
+    g_wt2 = np.outer(wt1[x], prob - y) 
+    g_wt1 = np.sum((prob - y)*wt2[:,targets], axis=1)  
+
+    # gradients decent
+    wt2[:,targets] -= learning_rate*g_wt2 
+    wt1[x] -= learning_rate*g_wt1 
+
+    # return cost (binary cross entropy)
+    cost = y * np.log(prob + 1e-10) + (1 - y) * np.log(1 - prob + 1e-10)
+    return cost.sum()
+    
+# get indexed sentences and word index 
+ixed_sentences, wordIdx,wordCounts = index_word()
+dict_size=len(wordIdx)   #dictionary size/unique word/ie N=shape(0)
+
+#total_words = sum(len(sentence) for sentence in ixed_sentences)#
+
+# initiate weights for input-to-hidden and hidden-to-output
+wt1 = np.random.randn(dict_size, embed_size)
+wt2 = np.random.randn(embed_size, dict_size)
+    
+#drop_threshold = 1e-1
+swFreq=smoothed_word_freq(ixed_sentences, dict_size)
+#p_drop = 1 - np.sqrt(threshold/swFreq)   # not used in this project due to small sample size
+    
+# train neural network model    
+for epoch in range(epochs):
+    np.random.shuffle(ixed_sentences)
+    cost = 0
+    counter = 0
+    t0 = datetime.now()
+        
+    # high frequent word will be dropped at high probability # not used in this project
+    for sentence in ixed_sentences:
+        #sentence = [w for w in sentence if np.random.random() < (1 - p_drop[w])]
+        if len(sentence) < 2:
+            continue
+                
+        # pick mid word in a sentence randomly
+        random_pick = np.random.choice(len(sentence),size=len(sentence),replace=False)
+        for pos in random_pick:
+            mid_word = sentence[pos]    # x / input
+            context_words = get_context(pos, sentence, context_size)
+            neg_word = np.random.choice(dict_size, p=swFreq)
+            contextWords = np.array(context_words)   # y / output
+                
+            # gradient descent
+            c = optimizer(mid_word, contextWords, 1, learn_rate, wt1, wt2)
+            cost += c
+            c = optimizer(neg_word, contextWords, 0, learn_rate, wt1, wt2)
+            cost += c
+                  
+        i += 1
+        if i % 100 == 0:
+            print("processed %s / %s\r" % (i, len(ixed_sentences)))
+
+    time_used = datetime.now() - t0
+    print("epoch complete:", epoch, "cost:", cost, "time used:", time_used)
+        
+    #update every epoch
+    costs.append(cost)
+    learn_rate -= lrate_decay
+    
+# plot the cost during model training
+plt.plot(costs)
+plt.show()
+
+# create a folder
+if not os.path.exists(filePath):
+    os.mkdir(filePath)
+        
+# save the model (two files)
+with open('%s/amz_review_idx.json' % filePath, 'w') as f:
+    json.dump(wordIdx, f)
+
+np.savez('%s/amz_review_word2vec.npz' % filePath, wt1, wt2)
