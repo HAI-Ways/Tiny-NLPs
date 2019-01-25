@@ -1,0 +1,81 @@
+from __future__ import print_function, division
+import os
+import sys
+import json
+import gensim
+import operator
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.metrics.pairwise import pairwise_distances
+from scipy.spatial.distance import cosine as cos_dist
+
+# model(two files) trained and saved using 'amazon product review word2vec embedding.py'
+filePath='C:/your folder/'
+modelPath=filePath+'amz_word2vec/'
+
+# load saved model
+def load_model(fPath):
+    with open('%s/amz_review_idx.json' % fPath) as f:
+        wordIdx = json.load(f)
+    npz = np.load('%s/amz_review_word2vec.npz' % fPath)
+    wt1 = npz['arr_0']
+    wt2 = npz['arr_1']
+    return wordIdx, wt1,wt2
+    
+# one usage of a word3vec model
+def find_analogy(word1, word2, word3):
+    dict_size, hidden_neuron = pick_a_weight.shape
+
+    for word in (word1, word2, word3):
+        if word not in wordIdx:
+            print("Sorry, %s not in wordIdx" % word)
+            return
+
+    p1 = pick_a_weight[wordIdx[word1]]
+    n1 = pick_a_weight[wordIdx[word2]]
+    p2 = pick_a_weight[wordIdx[word3]]
+    vec = p2-p1+n1
+
+    distances = pairwise_distances(vec.reshape(1, hidden_neuron), pick_a_weight, metric='cosine').reshape(dict_size)
+    idx = distances.argsort()[:10]
+
+    keep_out = [wordIdx[w] for w in (word1, word2,word3)]
+
+    for i in idx:
+        if i not in keep_out:
+            print("got: %s - %s = %s - %s" % (word1, word2, word3, idx2word[i]))
+            #print("dist of %s to %s: %d" % (idx2word[i],word3, cos_dist(pick_a_weight[i],p2)))
+            
+
+def find_neighbor_word(oneWord):
+    distances={}
+    oneWord=oneWord.strip()
+    
+    if oneWord not in wordIdx:
+        print("Sorry, %s not in wordIdx" % oneWord)
+        return
+
+    vec = wt1[wordIdx[oneWord]]
+    for word in wordIdx:
+        p3 = wt1[wordIdx[word]]
+        dis=cos_dist(p3, vec)
+        distances[word]=dis
+    distances = sorted(distances.items(), key=operator.itemgetter(1))
+       
+    return distances          
+    
+wordIdx, wt1, wt2 = load_model(modelPath)
+idx2word = {i:w for w, i in wordIdx.items()}
+Dict_size, Hidden_Neuron = wt1.shape
+
+# pick_a_weight can be wt1, wt2. Give a try
+pick_a_weight =(wt1 + wt2.T)/2
+find_analogy('good', 'product', 'bad')
+
+good=find_neighbor_word('good')
+good
+
+works=find_neighbor_word('works')
+works
